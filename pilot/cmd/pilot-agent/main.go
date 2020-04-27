@@ -25,8 +25,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
 
-	"istio.io/istio/pkg/dns"
-
 	meshconfig "istio.io/api/mesh/v1alpha1"
 	"istio.io/pkg/collateral"
 	"istio.io/pkg/env"
@@ -38,18 +36,15 @@ import (
 	"istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pilot/pkg/proxy"
 	envoyDiscovery "istio.io/istio/pilot/pkg/proxy/envoy"
-	securityModel "istio.io/istio/pilot/pkg/security/model"
 	"istio.io/istio/pilot/pkg/serviceregistry"
 	"istio.io/istio/pilot/pkg/util/sets"
 	"istio.io/istio/pkg/cmd"
 	"istio.io/istio/pkg/config/constants"
 	"istio.io/istio/pkg/envoy"
-	istio_agent "istio.io/istio/pkg/istio-agent"
 	"istio.io/istio/pkg/jwt"
 	"istio.io/istio/pkg/spiffe"
 	"istio.io/istio/pkg/util/gogoprotomarshal"
 	citadel "istio.io/istio/security/pkg/nodeagent/caclient/providers/citadel"
-	stsserver "istio.io/istio/security/pkg/stsservice/server"
 	"istio.io/istio/security/pkg/stsservice/tokenmanager"
 	cleaniptables "istio.io/istio/tools/istio-clean-iptables/pkg/cmd"
 	iptables "istio.io/istio/tools/istio-iptables/pkg/cmd"
@@ -129,9 +124,9 @@ var (
 			}
 
 			// Extract pod variables.
-			podName := podNameVar.Get()
-			podNamespace := podNamespaceVar.Get()
-			podIP := net.ParseIP(instanceIPVar.Get()) // protobuf encoding of IP_ADDRESS type
+			podName := "myPod"                //podNameVar.Get()
+			podNamespace := "myMs"            //podNamespaceVar.Get()
+			podIP := net.ParseIP("127.0.0.1") // protobuf encoding of IP_ADDRESS type
 
 			log.Infof("Version %s", version.Info.String())
 			role.Type = model.SidecarProxy
@@ -198,55 +193,57 @@ var (
 			// K8S
 			role.DNSDomain = getDNSDomain(podNamespace, role.DNSDomain)
 			log.Infof("Proxy role: %#v", role)
-
-			var jwtPath string
-			if jwtPolicy.Get() == jwt.JWTPolicyThirdPartyJWT {
-				log.Info("JWT policy is third-party-jwt")
-				jwtPath = trustworthyJWTPath
-			} else if jwtPolicy.Get() == jwt.JWTPolicyFirstPartyJWT {
-				log.Info("JWT policy is first-party-jwt")
-				jwtPath = securityModel.K8sSAJwtFileName
-			} else {
-				log.Info("Using existing certs")
-			}
-
-			sa := istio_agent.NewSDSAgent(proxyConfig.DiscoveryAddress, proxyConfig.ControlPlaneAuthPolicy == meshconfig.AuthenticationPolicy_MUTUAL_TLS,
-				pilotCertProvider, jwtPath, outputKeyCertToDir)
-
-			// Connection to Istiod secure port
-			if sa.RequireCerts {
-				proxyConfig.ControlPlaneAuthPolicy = meshconfig.AuthenticationPolicy_MUTUAL_TLS
-			}
-
-			var pilotSAN, mixerSAN []string
-			if proxyConfig.ControlPlaneAuthPolicy == meshconfig.AuthenticationPolicy_MUTUAL_TLS {
-				setSpiffeTrustDomain(podNamespace, role.DNSDomain)
-				// Obtain the Mixer SAN, which uses SPIFFE certs. Used below to create a Envoy proxy.
-				mixerSAN = getSAN(getControlPlaneNamespace(podNamespace, proxyConfig.DiscoveryAddress), envoyDiscovery.MixerSvcAccName, mixerIdentity)
-				// Obtain Pilot SAN, using DNS.
-				pilotSAN = []string{getPilotSan(proxyConfig.DiscoveryAddress)}
-			}
-			log.Infof("PilotSAN %#v", pilotSAN)
-			log.Infof("MixerSAN %#v", mixerSAN)
-
-			// Start in process SDS.
-			_, err = sa.Start(role.Type == model.SidecarProxy, podNamespaceVar.Get())
-			if err != nil {
-				log.Fatala("Failed to start in-process SDS", err)
-			}
-
-			// dedupe cert paths so we don't set up 2 watchers for the same file
-			tlsCerts := dedupeStrings(getTLSCerts(proxyConfig))
-
-			// Since Envoy needs the file-mounted certs for mTLS, we wait for them to become available
-			// before starting it.
-			if len(tlsCerts) > 0 {
-				log.Infof("Monitored certs: %#v", tlsCerts)
-				for _, cert := range tlsCerts {
-					waitForFile(cert, 2*time.Minute)
+			/*
+				var jwtPath string
+				if jwtPolicy.Get() == jwt.JWTPolicyThirdPartyJWT {
+					log.Info("JWT policy is third-party-jwt")
+					jwtPath = trustworthyJWTPath
+				} else if jwtPolicy.Get() == jwt.JWTPolicyFirstPartyJWT {
+					log.Info("JWT policy is first-party-jwt")
+					jwtPath = securityModel.K8sSAJwtFileName
+				} else {
+					log.Info("Using existing certs")
 				}
-			}
 
+				sa := istio_agent.NewSDSAgent(proxyConfig.DiscoveryAddress, proxyConfig.ControlPlaneAuthPolicy == meshconfig.AuthenticationPolicy_MUTUAL_TLS,
+					pilotCertProvider, jwtPath, outputKeyCertToDir)
+
+				// Connection to Istiod secure port
+				if sa.RequireCerts {
+					proxyConfig.ControlPlaneAuthPolicy = meshconfig.AuthenticationPolicy_MUTUAL_TLS
+				}
+			*/
+			var pilotSAN, mixerSAN []string
+			pilotSAN = []string{"myPilotSAN"}
+			mixerSAN = []string{"myMixerSAN"}
+			/*			if proxyConfig.ControlPlaneAuthPolicy == meshconfig.AuthenticationPolicy_MUTUAL_TLS {
+							setSpiffeTrustDomain(podNamespace, role.DNSDomain)
+							// Obtain the Mixer SAN, which uses SPIFFE certs. Used below to create a Envoy proxy.
+							mixerSAN = getSAN(getControlPlaneNamespace(podNamespace, proxyConfig.DiscoveryAddress), envoyDiscovery.MixerSvcAccName, mixerIdentity)
+							// Obtain Pilot SAN, using DNS.
+							pilotSAN = []string{getPilotSan(proxyConfig.DiscoveryAddress)}
+						}
+						log.Infof("PilotSAN %#v", pilotSAN)
+						log.Infof("MixerSAN %#v", mixerSAN)
+
+						// Start in process SDS.
+						_, err = sa.Start(role.Type == model.SidecarProxy, podNamespaceVar.Get())
+						if err != nil {
+							log.Fatala("Failed to start in-process SDS", err)
+						}
+
+						// dedupe cert paths so we don't set up 2 watchers for the same file
+						tlsCerts := dedupeStrings(getTLSCerts(proxyConfig))
+
+						// Since Envoy needs the file-mounted certs for mTLS, we wait for them to become available
+						// before starting it.
+						if len(tlsCerts) > 0 {
+							log.Infof("Monitored certs: %#v", tlsCerts)
+							for _, cert := range tlsCerts {
+								waitForFile(cert, 2*time.Minute)
+							}
+						}
+			*/
 			// If we are using a custom template file (for control plane proxy, for example), configure this.
 			if templateFile != "" && proxyConfig.CustomConfigFile == "" {
 				proxyConfig.ProxyBootstrapTemplatePath = templateFile
@@ -278,42 +275,44 @@ var (
 			// If security token service (STS) port is not zero, start STS server and
 			// listen on STS port for STS requests. For STS, see
 			// https://tools.ietf.org/html/draft-ietf-oauth-token-exchange-16.
-			if stsPort > 0 {
-				localHostAddr := localHostIPv4
-				if proxyIPv6 {
-					localHostAddr = localHostIPv6
-				}
-				tokenManager := tokenmanager.CreateTokenManager(tokenManagerPlugin,
-					tokenmanager.Config{TrustDomain: trustDomain})
-				stsServer, err := stsserver.NewServer(stsserver.Config{
-					LocalHostAddr: localHostAddr,
-					LocalPort:     stsPort,
-				}, tokenManager)
-				if err != nil {
-					cancel()
-					return err
-				}
-				defer stsServer.Stop()
-			}
+			/*			if stsPort > 0 {
+							localHostAddr := localHostIPv4
+							if proxyIPv6 {
+								localHostAddr = localHostIPv6
+							}
+							tokenManager := tokenmanager.CreateTokenManager(tokenManagerPlugin,
+								tokenmanager.Config{TrustDomain: trustDomain})
+							stsServer, err := stsserver.NewServer(stsserver.Config{
+								LocalHostAddr: localHostAddr,
+								LocalPort:     stsPort,
+							}, tokenManager)
+							if err != nil {
+								cancel()
+								return err
+							}
+							defer stsServer.Stop()
+						}
 
-			// Start a local DNS server on 15053, forwarding to DNS-over-TLS server
-			// This will not have any impact on app unless interception is enabled.
-			// We can't start on 53 - istio-agent runs as user istio-proxy.
-			// This is available to apps even if interception is not enabled.
+						// Start a local DNS server on 15053, forwarding to DNS-over-TLS server
+						// This will not have any impact on app unless interception is enabled.
+						// We can't start on 53 - istio-agent runs as user istio-proxy.
+						// This is available to apps even if interception is not enabled.
 
-			// TODO: replace hardcoded .global. Right now the ingress templates are
-			// hardcoding it as well, so there is little benefit to do it only here.
-			if dns.DNSTLSEnableAgent.Get() != "" {
-				// In the injection template the only place where global.proxy.clusterDomain
-				// is made available is in the --domain param.
-				// Instead of introducing a new config, use that.
+						// TODO: replace hardcoded .global. Right now the ingress templates are
+						// hardcoding it as well, so there is little benefit to do it only here.
+						if dns.DNSTLSEnableAgent.Get() != "" {
+							// In the injection template the only place where global.proxy.clusterDomain
+							// is made available is in the --domain param.
+							// Instead of introducing a new config, use that.
 
-				dnsSrv := dns.InitDNSAgent(proxyConfig.DiscoveryAddress,
-					role.DNSDomain, sa.RootCert,
-					[]string{".global."})
-				dnsSrv.StartDNS(dns.DNSAgentAddr, nil)
-			}
-
+							dnsSrv := dns.InitDNSAgent(proxyConfig.DiscoveryAddress,
+								role.DNSDomain, sa.RootCert,
+								[]string{".global."})
+							dnsSrv.StartDNS(dns.DNSAgentAddr, nil)
+						}
+			*/
+			//proxyConfig.CustomConfigFile = "/Users/sbt-aksenov-as/src/istio/tests/testdata/bootstrap_tmpl.json"
+			proxyConfig.ConfigPath = "/etc/istio/proxy/"
 			envoyProxy := envoy.NewProxy(envoy.ProxyConfig{
 				Config:              proxyConfig,
 				Node:                role.ServiceNode(),
@@ -335,8 +334,8 @@ var (
 
 			agent := envoy.NewAgent(envoyProxy, features.TerminationDrainDuration())
 
-			// Watcher is also kicking envoy start.
-			watcher := envoy.NewWatcher(tlsCerts, agent.Restart)
+			//Watcher is also kicking envoy start.
+			watcher := envoy.NewWatcher([]string{}, agent.Restart)
 			go watcher.Run(ctx)
 
 			// On SIGINT or SIGTERM, cancel the context, triggering a graceful shutdown
